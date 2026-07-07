@@ -1,0 +1,139 @@
+# ═══════════════════════════════════════════════════════════════════
+#  AcreetionOS ISO Build Pipeline — Multi-Variant
+#  Branch: acreetionos
+#  Builder: self-hosted shell runner on Dell Precision 7910
+#
+#  RUNNER SETUP (run once on the build server):
+#    gitlab-runner register \
+#      --url https://gitlab.acreetionos.org \
+#      --token <YOUR_RUNNER_TOKEN> \
+#      --executor shell \
+#      --description "acreetionos-builder" \
+#      --tag-list "acreetionos" \
+#      --run-untagged false
+#
+#  The runner user needs passwordless sudo (or run as root).
+#  mkarchiso requires loop device access for squashfs builds.
+# ═══════════════════════════════════════════════════════════════════
+
+stages:
+  - prepare
+  - build-base
+  - build-variants
+  - test
+  - publish
+
+variables:
+  ISO_OUT_DIR:   "${CI_PROJECT_DIR}/out"
+  WORK_DIR:      "${CI_PROJECT_DIR}/work"
+  ISO_LABEL:     "AcreetionOS"
+  PUBLISH_DIR:   "/srv/http/iso"
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "acreetionos"'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+
+# ───────────────────────────────────────────────────────────────────
+# STAGE 1 – PREPARE
+# ───────────────────────────────────────────────────────────────────
+prepare:deps:
+  stage: prepare
+  tags:
+    - acreetionos
+  script:
+    - echo "==> Initialising pacman keyring..."
+    - pacman-key --init
+    - pacman-key --populate archlinux
+    - echo "==> Refreshing databases and upgrading keyring..."
+    - pacman -Sy --noconfirm --config "${CI_PROJECT_DIR}/pacman.conf" archlinux-keyring
+    - echo "==> Installing archiso build dependencies..."
+    - pacman -S --noconfirm --needed --config "${CI_PROJECT_DIR}/pacman.conf" archiso squashfs-tools dosfstools erofs-utils mtools xorriso libarchive grub edk2-shell
+    - echo "==> Build environment ready."
+    - mkarchiso --version
+  rules:
+    - when: always
+
+# ───────────────────────────────────────────────────────────────────
+# STAGE 2 – BUILD BASE ISO
+# ───────────────────────────────────────────────────────────────────
+build:base:
+  stage: build-base
+  tags:
+    - acreetionos
+  needs:
+    - prepare:deps
+  timeout: 3h
+  before_script:
+    - echo "==> Cleaning previous build artifacts..."
+    - rm -rf "${WORK_DIR}" "${ISO_OUT_DIR}"
+    - mkdir -p "${ISO_OUT_DIR}"
+  script:
+    - echo "==> Building base AcreetionOS ISO..."
+    - cd "${CI_PROJECT_DIR}"
+    - ./build.sh
+    - echo "==> Base build complete."
+    - ls -lh "${CI_PROJECT_DIR}"/../ISO/*.iso 2>/dev/null || echo "  (no base ISO in ../ISO/)"
+  after_script:
+    - rm -rf "${WORK_DIR}"
+  artifacts:
+    name: "AcreetionOS-base-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - ../ISO/*.iso
+    expire_in: 30 days
+
+# ───────────────────────────────────────────────────────────────────
+# STAGE 3 – BUILD VARIANTS (matrix)
+# Dynamically builds all variants found in variants/unofficial/ and variants/official/
+# ───────────────────────────────────────────────────────────────────
+build:variant:
+  stage: build-variants
+  tags:
+    - acreetionos
+  needs:
+    - prepare:deps
+  timeout: 3h
+  parallel:
+    matrix:
+      - VARIANT: $(shell find variants/unofficial variants/official -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | tr '\n' ' ')
+  before_script:
+    - echo "==> Building variant: ${VARIANT}"
+    - rm -rf "${WORK_DIR}" "${ISO_OUT_DIR}"
+    - mkdir -p "${ISO_OUT_DIR}"
+  script:
+    - cd "${CI_PROJECT_DIR}"
+    - ./build.sh "${VARIANT}"
+    - echo "==> Variant build complete: ${VARIANT}"
+    - ls -lh "${CI_PROJECT_DIR}"/../ISO/${VARIANT}/*.iso 2>/dev/null || echo "  (no ISO found)"
+  after_script:
+    - rm -rf "${WORK_DIR}"
+  artifacts:
+    name: "AcreetionOS-${VARIANT}-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - ../ISO/${VARIANT}/*.iso
+    expire_in: 30 days
+
+# ───────────────────────────────────────────────────────────────────
+# STAGE 4 – TEST
+# ───────────────────────────────────────────────────────────────────
+test:iso:
+  stage: test
+  tags:
+    - acreetionos
+  needs:
+    - build:base
+    - build:variant
+  script:
+    - echo "==> Running ISO tests..."
+    - cd "${CI_PROJECT_DIR}"
+    - ./test-iso.sh
+    - echo "==> Tests complete."
+    - cat test-results.log
+  artifacts:
+    name: "test-results-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - test-results.log
+    expire_in: 30 days
+    when: always
