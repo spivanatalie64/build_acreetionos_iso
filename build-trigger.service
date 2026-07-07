@@ -1,0 +1,16 @@
+[Unit]
+Description=AcreetionOS Build Trigger — webhook listener for automated ISO builds
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=natalie
+WorkingDirectory=/home/natalie/github/build_acreetionos_iso
+ExecStart=/home/natalie/github/build_acreetionos_iso/webhook-trigger.sh --port 8080
+Restart=always
+RestartSec=10
+Environment=WEBHOOK_SECRET=
+
+[Install]
+WantedBy=multi-user.target

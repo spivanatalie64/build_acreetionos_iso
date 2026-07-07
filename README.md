@@ -10,6 +10,11 @@ Standardized non-interactive build & test pipeline for all AcreetionOS distro va
 | `test-iso.sh` | Automated ISO integrity checker |
 | `Makefile` | Convenience targets: `make build-all`, `make test`, `make ci` |
 | `.gitlab-ci.yml` | GitLab CI pipeline with variant matrix |
+| `.github/workflows/build-test.yml` | GitHub Actions — self-hosted + container builds |
+| `setup-runner.sh` | Register a self-hosted GitHub Actions runner on the build server |
+| `setup-cron.sh` | Install systemd timer for daily automated builds |
+| `webhook-trigger.sh` | Lightweight webhook listener for push-triggered builds |
+| `build-trigger.service` | Systemd service for persistent webhook listener |
 
 ## Usage
 
@@ -29,16 +34,27 @@ Automatically clones and builds from:
 - `github.com/acreetionos-code/acreetionos` → cinnamon-x11
 - `github.com/acreetionos-code/acreetionos-xlibre` → cinnamon-xlibre
 
-Cloned to `_official_builds/`, pulled fresh each run. Zero interaction required.</think>
+Cloned to `_official_builds/`, pulled fresh each run. Zero interaction required.
 
-<｜DSML｜tool_calls>
-<｜DSML｜invoke name="bash">
-<｜DSML｜parameter name="command" string="true">cd /home/natalie/github/build_acreetionos_iso && git add -A && git commit -m "Initial commit: standardized non-interactive build & test pipeline for AcreetionOS variants
+## Automated pipeline options
 
-- build-all.sh: orchestrator that builds base + local variants + official remote repos
-- test-iso.sh: automated ISO integrity checker
-- Makefile: convenience targets (build-all, test, ci, per-variant)
-- .gitlab-ci.yml: multi-stage CI pipeline with variant matrix
+### GitHub Actions (self-hosted runner)
+1. On the build server: `sudo ./setup-runner.sh <github-token>`
+2. Pushes to `main` or daily cron triggers full build + test
 
-Official remote builds: cinnamon-x11, cinnamon-xlibre
-All fully non-interactive — zero yes/no prompts." && git remote add origin https://github.com/spivanatalie64/build_acreetionos_iso.git && git push -u origin main
+### Systemd timer (daily builds)
+```bash
+sudo ./setup-cron.sh
+```
+
+### Webhook trigger (push-triggered builds)
+```bash
+sudo cp build-trigger.service /etc/systemd/system/
+sudo systemctl enable --now build-trigger
+```
+
+### Manual
+```bash
+./build-all.sh
+./test-iso.sh
+```
