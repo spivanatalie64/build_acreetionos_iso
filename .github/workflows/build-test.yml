@@ -11,17 +11,33 @@ on:
 
 jobs:
   build-cinnamon-x11:
-    runs-on: [self-hosted, linux, x64, acreetionos]
-    if: github.repository == 'spivanatalie64/build_acreetionos_iso'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
-      - name: Build cinnamon-x11
+      - name: Install deps
         run: |
-          chmod +x build-all.sh test-iso.sh
-          ./build-all.sh --only-official --skip-test
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -S --noconfirm --needed archiso squashfs-tools dosfstools erofs-utils mtools xorriso libarchive grub edk2-shell git
+      - name: Checkout pipeline
+        uses: actions/checkout@v4
+        with:
+          path: pipeline
+      - name: Clone and build cinnamon-x11
+        run: |
+          cd pipeline
+          git clone https://github.com/acreetionos-code/acreetionos.git _official_builds/cinnamon-x11
+          cd _official_builds/cinnamon-x11
+          if [ -f build.sh ]; then
+            chmod +x build.sh
+            ./build.sh
+          fi
       - name: Test ISO
         run: |
+          cd pipeline
+          chmod +x test-iso.sh
           ./test-iso.sh cinnamon-x11
       - name: Upload ISO
         uses: actions/upload-artifact@v4
@@ -32,20 +48,15 @@ jobs:
 
   build-cinnamon-xlibre:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
+    needs: [build-cinnamon-x11]
     steps:
-      - name: Install deps
+      - uses: actions/checkout@v4
+      - name: Install dependencies
         run: |
-          pacman -Sy --noconfirm archlinux-keyring
-          pacman -S --noconfirm --needed archiso squashfs-tools dosfstools erofs-utils mtools xorriso libarchive grub edk2-shell git
-      - name: Checkout pipeline
-        uses: actions/checkout@v4
-        with:
-          path: pipeline
+          sudo apt-get update
+          sudo apt-get install -y xorriso genisoimage
       - name: Clone and build cinnamon-xlibre
         run: |
-          cd pipeline
           git clone https://github.com/acreetionos-code/acreetionos-xlibre.git _official_builds/cinnamon-xlibre
           cd _official_builds/cinnamon-xlibre
           if [ -f build.sh ]; then
@@ -54,7 +65,6 @@ jobs:
           fi
       - name: Test ISO
         run: |
-          cd pipeline
           chmod +x test-iso.sh
           ./test-iso.sh cinnamon-xlibre
       - name: Upload ISO

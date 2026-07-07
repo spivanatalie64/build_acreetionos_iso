@@ -10,8 +10,7 @@ Standardized non-interactive build & test pipeline for all AcreetionOS distro va
 | `test-iso.sh` | Automated ISO integrity checker |
 | `Makefile` | Convenience targets: `make build-all`, `make test`, `make ci` |
 | `.gitlab-ci.yml` | GitLab CI pipeline with variant matrix |
-| `.github/workflows/build-test.yml` | GitHub Actions — self-hosted + container builds |
-| `setup-runner.sh` | Register a self-hosted GitHub Actions runner on the build server |
+| `.github/workflows/build-test.yml` | GitHub Actions — container-based builds on GitHub-hosted runners |
 | `setup-cron.sh` | Install systemd timer for daily automated builds |
 | `webhook-trigger.sh` | Lightweight webhook listener for push-triggered builds |
 | `build-trigger.service` | Systemd service for persistent webhook listener |
@@ -36,13 +35,15 @@ Automatically clones and builds from:
 
 Cloned to `_official_builds/`, pulled fresh each run. Zero interaction required.
 
-## Automated pipeline options
+## Automated pipeline
 
-### GitHub Actions (self-hosted runner)
-1. On the build server: `sudo ./setup-runner.sh <github-token>`
-2. Pushes to `main` or daily cron triggers full build + test
+### GitHub Actions (hosted runners)
+- **cinnamon-x11**: builds in `archlinux:latest` container with `--privileged` for loop device support
+- **cinnamon-xlibre**: builds on `ubuntu-latest` with xorriso
+- **Triggers**: daily cron (6 AM), push to main, manual dispatch, or repository_dispatch webhook
+- **Artifacts**: ISOs uploaded, test results logged, retained 7-30 days
 
-### Systemd timer (daily builds)
+### Systemd timer (daily builds on build server)
 ```bash
 sudo ./setup-cron.sh
 ```
