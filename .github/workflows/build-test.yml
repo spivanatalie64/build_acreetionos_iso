@@ -9,6 +9,10 @@ on:
   repository_dispatch:
     types: [build-trigger]
 
+env:
+  CINNAMON_X11_REPO: https://github.com/acreetionos-code/acreetionos.git
+  CINNAMON_XLIBRE_REPO: https://github.com/acreetionos-code/acreetionos-xlibre.git
+
 jobs:
   build-cinnamon-x11:
     runs-on: ubuntu-latest
@@ -21,22 +25,18 @@ jobs:
         run: |
           pacman -Sy --noconfirm archlinux-keyring
           pacman -S --noconfirm --needed archiso squashfs-tools dosfstools erofs-utils mtools xorriso libarchive grub edk2-shell git
-      - name: Checkout pipeline
-        uses: actions/checkout@v4
-        with:
-          path: pipeline
+      - uses: actions/checkout@v4
       - name: Clone and build cinnamon-x11
         run: |
-          cd pipeline
-          git clone https://github.com/acreetionos-code/acreetionos.git _official_builds/cinnamon-x11
+          mkdir -p _official_builds
+          git clone $CINNAMON_X11_REPO _official_builds/cinnamon-x11
           cd _official_builds/cinnamon-x11
           if [ -f build.sh ]; then
             chmod +x build.sh
-            ./build.sh
+            ./build.sh 2>&1
           fi
       - name: Test ISO
         run: |
-          cd pipeline
           chmod +x test-iso.sh
           ./test-iso.sh cinnamon-x11
       - name: Upload ISO
@@ -45,23 +45,33 @@ jobs:
           name: cinnamon-x11-iso
           path: _official_builds/cinnamon-x11/out/*.iso
           retention-days: 7
+      - name: Upload test log
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-x11
+          path: test-results.log
+          retention-days: 30
 
   build-cinnamon-xlibre:
     runs-on: ubuntu-latest
-    needs: [build-cinnamon-x11]
+    container:
+      image: archlinux:latest
+      options: --privileged
+    timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
-      - name: Install dependencies
+      - name: Install deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xorriso genisoimage
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -S --noconfirm --needed archiso squashfs-tools dosfstools erofs-utils mtools xorriso libarchive grub edk2-shell git
+      - uses: actions/checkout@v4
       - name: Clone and build cinnamon-xlibre
         run: |
-          git clone https://github.com/acreetionos-code/acreetionos-xlibre.git _official_builds/cinnamon-xlibre
+          mkdir -p _official_builds
+          git clone $CINNAMON_XLIBRE_REPO _official_builds/cinnamon-xlibre
           cd _official_builds/cinnamon-xlibre
           if [ -f build.sh ]; then
             chmod +x build.sh
-            ./build.sh
+            ./build.sh 2>&1
           fi
       - name: Test ISO
         run: |
@@ -73,22 +83,9 @@ jobs:
           name: cinnamon-xlibre-iso
           path: _official_builds/cinnamon-xlibre/out/*.iso
           retention-days: 7
-
-  test:
-    runs-on: ubuntu-latest
-    needs: [build-cinnamon-x11, build-cinnamon-xlibre]
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download all ISOs
-        uses: actions/download-artifact@v4
-      - name: Run ISO tests
-        run: |
-          chmod +x test-iso.sh
-          ./test-iso.sh
-      - name: Upload test results
+      - name: Upload test log
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-log-xlibre
           path: test-results.log
           retention-days: 30
